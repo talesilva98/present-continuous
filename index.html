@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Present Continuous Quest — Jogo de Tabuleiro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root { --ink:#172033; --blue:#2563eb; --mint:#d1fae5; --gold:#fef3c7; --rose:#ffe4e6; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif; background:#eef2ff; color:var(--ink); }
+  .game-shell { min-height:100vh; }
+  .board { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:9px; }
+  .tile { min-height:100px; position:relative; border:1px solid rgba(15,23,42,.12); border-radius:16px; padding:9px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 5px 0 rgba(15,23,42,.14),0 8px 14px rgba(15,23,42,.08); }
+  .tile.question { background:linear-gradient(145deg,#fff,#dbeafe); }
+  .tile.bonus { background:linear-gradient(145deg,#fff,#d1fae5); }
+  .tile.punishment { background:linear-gradient(145deg,#fff,#ffe4e6); }
+  .tile.mime { background:linear-gradient(145deg,#fff,#fef3c7); }
+  .tile.start { background:linear-gradient(145deg,#fef08a,#facc15); }
+  .tile.finish { background:linear-gradient(145deg,#c4b5fd,#a5b4fc); }
+  .tile.active { outline:4px solid #f97316; outline-offset:1px; transform:translateY(-3px); }
+  .tile-number { font-size:12px; font-weight:900; opacity:.65; }
+  .tile-icon { font-size:22px; line-height:1; }
+  .tile-text { font-size:12px; font-weight:800; line-height:1.2; }
+  .pawn { position:absolute; right:5px; top:5px; display:flex; gap:2px; font-size:16px; filter:drop-shadow(0 2px 1px #fff); }
+  .die { width:94px;height:94px;border-radius:22px;background:linear-gradient(145deg,#fff,#dbeafe);box-shadow:8px 8px 0 #93c5fd, 0 14px 22px #0f172a22; display:grid;place-items:center;font-size:52px;font-weight:900;color:#1d4ed8;border:2px solid white; }
+  .modal-backdrop { position:fixed;inset:0;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50; }
+  .modal-card { width:min(620px,100%);background:white;border-radius:24px;padding:26px;box-shadow:0 25px 70px #0005; }
+  .print-version { display:none; }
+  .print-board { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px; }
+  .print-tile { border:1.4px solid #222;border-radius:5px;padding:5px;min-height:73px;display:flex;flex-direction:column;gap:3px;background:white;color:#111; }
+  .print-tile b { font-size:10px; }
+  .print-tile span { font-size:9px;line-height:1.2; }
+  .answer-key { font-size:10px;line-height:1.25; }
+  .answer-key li { margin-bottom:4px; }
+  @media (max-width:1000px) {
+    .board { gap:6px; }
+    .tile { min-height:85px;padding:6px; }
+    .tile-text { font-size:10px; }
+  }
+  @media print {
+    @page { size:A4 landscape; margin:7mm; }
+    body { background:white !important; }
+    .game-shell, .modal-backdrop, #screen-switch { display:none !important; }
+    .print-version { display:block !important; }
+    .print-page { width:100%; color:#111; background:#fff; }
+    .print-head { display:flex;justify-content:space-between;align-items:end;border-bottom:2px solid #111;padding-bottom:5px;margin-bottom:7px; }
+    .print-head h1 { font-size:18px;font-weight:900;letter-spacing:.4px;margin:0; }
+    .print-head p { font-size:9px;margin:0; }
+    .print-layout { display:grid;grid-template-columns:minmax(0,3fr) minmax(210px,1fr);gap:9px; }
+    .print-board { gap:4px; }
+    .print-tile { min-height:66px;padding:4px;border-radius:3px;break-inside:avoid; }
+    .print-tile b { font-size:9px; }
+    .print-tile span { font-size:8px; }
+    .answer-key { font-size:8px;line-height:1.15; }
+    .answer-key li { margin-bottom:2px; }
+    .key-title { font-size:12px;font-weight:900;margin:0 0 4px; }
+    .print-note { font-size:8px;margin-top:5px; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+
+const spaces = [
+ {type:'start', icon:'🚩', label:'START', prompt:'Comece aqui.'},
+ {type:'question', icon:'🧩', label:'Pronome + verbo', prompt:'Complete: She ___ (read) a book now.', answer:'She is reading a book now.', explain:'She = is; read + ing = reading.'},
+ {type:'question', icon:'🔤', label:'Verbo to be', prompt:'Escolha: They (am / is / are) playing soccer.', answer:'They are playing soccer.', explain:'Com they, usamos are.'},
+ {type:'bonus', icon:'🚀', label:'BÔNUS +2', prompt:'Bônus! Avance 2 casas.', move:2},
+ {type:'question', icon:'🛠️', label:'Forma -ing', prompt:'Escreva o verbo “make” com -ing.', answer:'making', explain:'Retiramos o e final: make → making.'},
+ {type:'mime', icon:'🎭', label:'MÍMICA', prompt:'Faça uma mímica de “dancing”. A equipe deve dizer: “You are dancing!”', answer:'Resposta esperada: “You are dancing!” ou “He/She is dancing!”, conforme a mímica.'},
+ {type:'question', icon:'🧠', label:'Estrutura', prompt:'Organize: is / dinner / cooking / He.', answer:'He is cooking dinner.', explain:'Sujeito + am/is/are + verbo-ing + complemento.'},
+ {type:'punishment', icon:'🌀', label:'VOLTE 2', prompt:'Ops! Volte 2 casas.', move:-2},
+ {type:'question', icon:'👀', label:'Ação agora', prompt:'Traduza: “Nós estamos estudando agora.”', answer:'We are studying now.', explain:'We + are + studying.'},
+ {type:'question', icon:'❌', label:'Encontre o erro', prompt:'Corrija: “I is writing.”', answer:'I am writing.', explain:'Com I, usamos am.'},
+ {type:'bonus', icon:'⭐', label:'BÔNUS +1', prompt:'Boa jogada! Avance 1 casa.', move:1},
+ {type:'question', icon:'❓', label:'Negativa', prompt:'Passe para a negativa: “She is sleeping.”', answer:'She is not sleeping. / She isn’t sleeping.', explain:'Acrescente not depois de am/is/are.'},
+ {type:'mime', icon:'🎭', label:'MÍMICA', prompt:'Faça uma mímica de “swimming”. A equipe deve formar uma frase no Present Continuous.', answer:'Exemplo: “I am swimming!”'},
+ {type:'question', icon:'🔤', label:'Escolha o auxiliar', prompt:'Complete: I ___ listening to music.', answer:'I am listening to music.', explain:'Com I, usamos am.'},
+ {type:'question', icon:'📝', label:'Pergunta', prompt:'Transforme em pergunta: “They are running.”', answer:'Are they running?', explain:'Coloque am/is/are antes do sujeito.'},
+ {type:'punishment', icon:'⏪', label:'VOLTE 3', prompt:'Atenção! Volte 3 casas.', move:-3},
+ {type:'question', icon:'🧩', label:'Pronome', prompt:'Qual pronome pode substituir “Maria” nesta frase: ___ is singing.', answer:'She is singing.', explain:'Maria → she.'},
+ {type:'question', icon:'🛠️', label:'Forma -ing', prompt:'Escreva “run” com -ing.', answer:'running', explain:'Dobramos a consoante final: run → running.'},
+ {type:'bonus', icon:'🚀', label:'BÔNUS +2', prompt:'Você ganhou impulso! Avance 2 casas.', move:2},
+ {type:'question', icon:'🌎', label:'Tradução', prompt:'Traduza: “Ele está falando inglês.”', answer:'He is speaking English.', explain:'He + is + speaking.'},
+ {type:'mime', icon:'🎭', label:'MÍMICA', prompt:'Faça uma mímica de “eating”. A equipe deve criar uma frase completa.', answer:'Exemplo: “He is eating.” / “She is eating.”'},
+ {type:'question', icon:'🔎', label:'Identifique', prompt:'Qual é o Present Continuous? (a) She works. (b) She is working.', answer:'(b) She is working.', explain:'am/is/are + verbo com -ing indica Present Continuous.'},
+ {type:'punishment', icon:'🌀', label:'VOLTE 2', prompt:'Escorregou! Volte 2 casas.', move:-2},
+ {type:'question', icon:'✍️', label:'Frase afirmativa', prompt:'Crie uma frase com “we / watch TV”.', answer:'Exemplo: We are watching TV.', explain:'Aceite outras frases corretas com we are + verbo-ing.'},
+ {type:'question', icon:'🚫', label:'Negativa', prompt:'Complete: He ___ ___ (not / work) now.', answer:'He is not working now. / He isn’t working now.', explain:'He + is not + working.'},
+ {type:'bonus', icon:'🏆', label:'BÔNUS +1', prompt:'Quase lá! Avance 1 casa.', move:1},
+ {type:'question', icon:'🧠', label:'Corrija a frase', prompt:'Corrija: “They are play football.”', answer:'They are playing football.', explain:'Depois de are, use playing.'},
+ {type:'mime', icon:'🎭', label:'MÍMICA FINAL', prompt:'Represente “writing” sem falar. Sua equipe tem 10 segundos para dizer uma frase.', answer:'Exemplo: “You are writing.”'},
+ {type:'question', icon:'⚡', label:'Desafio relâmpago', prompt:'Complete: What ___ you ___ (do) right now?', answer:'What are you doing right now?', explain:'Pergunta: What + are + you + doing.'},
+ {type:'finish', icon:'🏁', label:'FINISH!', prompt:'Chegada! Diga uma frase original no Present Continuous para vencer.', answer:'Qualquer frase correta: sujeito + am/is/are + verbo-ing. Ex.: “I am learning English!”'}
+];
+
+const teamsMeta = [
+ {name:'Equipe Azul', color:'#2563eb', token:'🔵'},
+ {name:'Equipe Rosa', color:'#db2777', token:'🩷'},
+ {name:'Equipe Verde', color:'#059669', token:'🟢'},
+ {name:'Equipe Roxa', color:'#7c3aed', token:'🟣'}
+];
+
+function App(){
+ const [teamCount,setTeamCount]=useState(2);
+ const [teams,setTeams]=useState([{pos:0,score:0},{pos:0,score:0}]);
+ const [current,setCurrent]=useState(0);
+ const [die,setDie]=useState(1);
+ const [rolled,setRolled]=useState(false);
+ const [modal,setModal]=useState(null);
+ const [showAnswer,setShowAnswer]=useState(false);
+ const [history,setHistory]=useState([]);
+ const active=teams[current];
+ const syncCount=(n)=>{setTeamCount(n);setTeams(Array.from({length:n},(_,i)=>teams[i]||{pos:0,score:0}));setCurrent(0);setRolled(false);setModal(null);};
+ const roll=()=>{if(rolled)return;const n=Math.floor(Math.random()*6)+1;setDie(n);setRolled(true);const p=Math.min(29,active.pos+n);setTeams(old=>old.map((t,i)=>i===current?{...t,pos:p}:t));setHistory(h=>[...h,`${teamsMeta[current].name}: tirou ${n}`]);setTimeout(()=>{const s=spaces[p];if(s.type==='question'||s.type==='mime'||s.type==='finish'){setModal({index:p,team:current});setShowAnswer(false);}else if(s.move){setTeams(old=>old.map((t,i)=>i===current?{...t,pos:Math.max(0,Math.min(29,p+s.move))}:t));}},80);};
+ const resolve=(correct)=>{
+   if(modal===null)return;
+   const i=modal.team, s=spaces[modal.index];
+   setTeams(old=>old.map((t,j)=>{
+     if(j!==i)return t;
+     let pos=t.pos;
+     if(!correct)pos=Math.max(0,pos-2);
+     return {...t,score:t.score+(correct?1:0),pos};
+   }));
+   setModal(null);setRolled(false);setShowAnswer(false);setCurrent((i+1)%teamCount);
+ };
+ const skipTurn=()=>{setRolled(false);setCurrent((current+1)%teamCount);};
+ const reset=()=>{setTeams(Array.from({length:teamCount},()=>({pos:0,score:0})));setCurrent(0);setDie(1);setRolled(false);setModal(null);setHistory([]);};
+ const tileContents=(s,i,print=false)=> <><b>{String(i+1).padStart(2,'0')} · {s.icon} {s.label}</b><span>{s.prompt}</span></>;
+ return <div>
+  <div className="game-shell p-4 lg:p-6">
+   <header className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div><div className="text-xs font-black tracking-[.25em] text-blue-700 uppercase">English classroom game</div><h1 className="text-3xl md:text-4xl font-black tracking-tight">PRESENT CONTINUOUS <span className="text-blue-600">QUEST</span></h1><p className="text-slate-600 mt-1">Role o dado, responda e avance rumo à chegada!</p></div>
+    <div className="flex gap-2"><button onClick={()=>window.print()} className="rounded-xl bg-white border border-slate-300 px-4 py-2 font-bold shadow-sm hover:bg-slate-50">🖨️ Imprimir tabuleiro</button><button onClick={reset} className="rounded-xl bg-slate-900 text-white px-4 py-2 font-bold shadow">↻ Reiniciar</button></div>
+   </header>
+   <div className="max-w-[1600px] mx-auto grid grid-cols-1 xl:grid-cols-[250px_1fr] gap-5">
+    <aside className="space-y-4">
+     <section className="bg-white rounded-3xl p-5 shadow-lg border border-white">
+      <h2 className="font-black text-lg mb-3">🎲 Central do dado</h2>
+      <div className="flex items-center gap-5">
+       <div className="die" aria-live="polite">{['','⚀','⚁','⚂','⚃','⚄','⚅'][die]}</div>
+       <div className="flex-1"><p className="text-sm text-slate-500 mb-1">Vez de jogar</p><p className="font-black" style={{color:teamsMeta[current].color}}>{teamsMeta[current].name}</p><button onClick={roll} disabled={rolled} className="mt-3 w-full rounded-xl bg-blue-600 text-white px-3 py-3 font-black shadow-[0_4px_0_#1e40af] disabled:opacity-40 disabled:shadow-none">{rolled?'Jogada feita':'LANÇAR DADO'}</button></div>
+      </div>
+      {rolled&&<p className="mt-4 text-sm bg-blue-50 p-3 rounded-xl">Saiu <b>{die}</b>! A equipe avançou no tabuleiro.</p>}
+      <button onClick={skipTurn} className="mt-3 w-full text-sm font-bold text-slate-500 hover:text-slate-900">Passar a vez ↪</button>
+     </section>
+     <section className="bg-white rounded-3xl p-5 shadow-lg">
+      <h2 className="font-black text-lg mb-3">🏆 Placar</h2>
+      <label className="text-xs uppercase tracking-wider text-slate-500 font-bold">Número de equipes</label>
+      <div className="grid grid-cols-3 gap-2 mt-2 mb-4">{[2,3,4].map(n=><button key={n} onClick={()=>syncCount(n)} className={`rounded-lg py-2 font-black border ${teamCount===n?'bg-slate-900 text-white border-slate-900':'bg-white border-slate-200'}`}>{n}</button>)}</div>
+      <div className="space-y-3">{teams.map((t,i)=><div key={i} className={`p-3 rounded-2xl border-2 ${current===i?'bg-blue-50 border-blue-300':'border-slate-100'}`}>
+       <div className="flex justify-between items-center gap-2"><span className="font-extrabold text-sm" style={{color:teamsMeta[i].color}}>{teamsMeta[i].token} {teamsMeta[i].name}</span><span className="text-xs font-bold bg-white rounded-full px-2 py-1">{t.score} pts</span></div>
+       <div className="mt-2 flex justify-between text-xs text-slate-500"><span>Casa {t.pos+1}/30</span><span>{t.pos===29?'CHEGOU!':'Em jogo'}</span></div>
+       <div className="h-2 rounded-full bg-slate-100 mt-2 overflow-hidden"><div className="h-full rounded-full" style={{width:`${(t.pos/29)*100}%`,background:teamsMeta[i].color}}/></div>
+      </div>)}</div>
+     </section>
+     <section className="bg-slate-900 text-white rounded-3xl p-5 shadow-lg"><h2 className="font-black mb-2">📘 Regras rápidas</h2><ul className="text-sm space-y-2 text-slate-200"><li>• Cada equipe joga na sua vez.</li><li>• Acertou: ganha 1 ponto e fica.</li><li>• Errou: volta 2 casas.</li><li>• Bônus e punições são automáticos.</li><li>• Vence quem chegar ao FINISH e criar uma frase correta.</li></ul></section>
+    </aside>
+    <main className="bg-indigo-100/80 rounded-[28px] p-3 md:p-5 border border-indigo-200 shadow-inner">
+     <div className="flex flex-wrap justify-between items-center gap-2 mb-4 px-1"><div><h2 className="font-black text-xl">O caminho das 30 casas</h2><p className="text-sm text-slate-600">Siga o zigue-zague da esquerda para a direita; a linha seguinte volta no sentido contrário.</p></div><div className="flex gap-2 text-xs font-bold"><span className="bg-blue-100 px-2 py-1 rounded-full">🧩 Pergunta</span><span className="bg-emerald-100 px-2 py-1 rounded-full">🚀 Bônus</span><span className="bg-rose-100 px-2 py-1 rounded-full">🌀 Punição</span><span className="bg-amber-100 px-2 py-1 rounded-full">🎭 Mímica</span></div></div>
+     <div className="board">{Array.from({length:30},(_,i)=>{
+       // Serpentine: first row left-to-right, second right-to-left, etc.
+       const row=Math.floor(i/6), col=row%2===0?i%6:5-(i%6);
+       const s=spaces[i];
+       return <div key={i} style={{gridRow:row+1,gridColumn:col+1}} className={`tile ${s.type} ${teams.some(t=>t.pos===i)?'':''}`}>
+        <div className="tile-number">CASA {i+1}</div><div className="tile-icon">{s.icon}</div><div className="tile-text">{s.label}</div>
+        <div className="pawn">{teams.map((t,j)=>t.pos===i?<span key={j} title={teamsMeta[j].name}>{teamsMeta[j].token}</span>:null)}</div>
+       </div>;
+     })}</div>
+     <div className="mt-4 bg-white/80 rounded-2xl p-3 text-sm text-slate-600"><b>Foco da aula:</b> subject + am/is/are + verb-ing. Ex.: <i>They are playing.</i> · <b>Negativa:</b> am/is/are + not · <b>Pergunta:</b> Am/Is/Are + sujeito…?</div>
+    </main>
+   </div>
+   {modal&&<div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal-card">
+    <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-black tracking-widest uppercase text-blue-600">Casa {modal.index+1} · {spaces[modal.index].label}</div><h2 className="text-2xl font-black mt-1">{spaces[modal.index].icon} Desafio da equipe</h2></div><button onClick={()=>{setModal(null);setRolled(false);setCurrent((modal.team+1)%teamCount)}} className="text-2xl text-slate-400" aria-label="Fechar">×</button></div>
+    <p className="text-xl font-bold mt-5 leading-snug">{spaces[modal.index].prompt}</p>
+    {showAnswer?<div className="mt-5 bg-amber-50 border border-amber-200 rounded-2xl p-4"><div className="font-black text-amber-900 mb-1">🔒 Para o Professor</div><p className="font-bold">{spaces[modal.index].answer}</p>{spaces[modal.index].explain&&<p className="text-sm text-slate-600 mt-2">{spaces[modal.index].explain}</p>}</div>:<button onClick={()=>setShowAnswer(true)} className="mt-5 rounded-xl border-2 border-dashed border-slate-300 w-full p-3 font-bold text-slate-600 hover:bg-slate-50">👨‍🏫 Mostrar resposta — Para o Professor</button>}
+    <div className="grid grid-cols-2 gap-3 mt-5"><button onClick={()=>resolve(true)} className="rounded-xl bg-emerald-600 text-white font-black py-3 shadow-[0_4px_0_#047857]">✓ Acertou (+1 ponto)</button><button onClick={()=>resolve(false)} className="rounded-xl bg-rose-600 text-white font-black py-3 shadow-[0_4px_0_#be123c]">✗ Errou (volta 2)</button></div>
+    <p className="text-xs text-slate-400 mt-4">Equipe: {teamsMeta[modal.team].name}. Nas mímicas, aceite frases equivalentes gramaticalmente corretas.</p>
+   </div></div>}
+  </div>
+  <section className="print-version">
+   <div className="print-page">
+    <div className="print-head"><div><h1>PRESENT CONTINUOUS QUEST</h1><p>Jogo de tabuleiro · 2 a 4 equipes · Cada equipe precisa de um peão e um dado.</p></div><p>Nome da turma: ____________________ &nbsp; Data: ____/____/______</p></div>
+    <div className="print-layout">
+     <div><div className="print-board">{spaces.map((s,i)=>{const row=Math.floor(i/6),col=row%2===0?i%6:5-(i%6);return <div key={i} style={{gridRow:row+1,gridColumn:col+1}} className="print-tile"><b>{String(i+1).padStart(2,'0')} · {s.icon} {s.label}</b><span>{s.prompt}</span></div>})}</div><p className="print-note"><b>Como jogar:</b> role o dado e siga as casas em zigue-zague. Perguntas: o professor confere o gabarito; acertou, fica e ganha 1 ponto; errou, volta 2 casas. Bônus/punições: siga o comando. Mímica: represente a ação e diga uma frase. Para vencer, chegue ao FINISH e crie uma frase correta.</p></div>
+     <aside className="answer-key"><h2 className="key-title">GABARITO — PARA O PROFESSOR</h2><ol>
+      {spaces.map((s,i)=>(s.answer?<li key={i}><b>{i+1}. {s.label}:</b> {s.answer}{s.explain?' ('+s.explain+')':''}</li>:null))}
+     </ol><hr style={{borderTop:'1px solid #777',margin:'5px 0'}}/><p><b>Estrutura:</b> sujeito + am/is/are + verbo-ing.</p><p><b>Pronomes:</b> I am; he/she/it is; you/we/they are.</p><p><b>Ortografia:</b> make → making; run → running.</p></aside>
+    </div>
+   </div>
+  </section>
+ </div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
